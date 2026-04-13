@@ -1,0 +1,12 @@
+# Variabili d'ambiente — MAI su GitHub
+.env
+
+# Dipendenze
+node_modules/
+
+# Log locali
+*.log
+*.old
+
+# File UID locali (vecchia versione)
+processed_uids.json
