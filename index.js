@@ -9,7 +9,7 @@ const { createClient} = require('redis');
 const PORT              = process.env.PORT || 3000;
 const ERROR_EMAIL_TO    = process.env.ERROR_EMAIL_TO || 'oscarnastro@gmail.com';
 const ERROR_MAIL_COOLDOWN = 10 * 60 * 1000;
-const UID_RETENTION_S   = 24 * 60 * 60; // 1 giorno in secondi (per Redis TTL)
+const UID_RETENTION_S   = 24 * 60 * 60;
 
 const SUBJECT_KEYWORDS  = ['Importante', 'aggiornare', 'Netflix', 'posizione principale'];
 const BUTTON_KEYWORDS   = ['conferma', 'confirm', 'update', 'aggiorna', 'continue'];
@@ -19,7 +19,6 @@ const USER_AGENTS = [
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/123.0.0.0 Safari/537.36',
 ];
 
-// Validazione env vars obbligatorie
 const REQUIRED_ENV = [
   'GOOGLE_CLIENT_ID',
   'GOOGLE_CLIENT_SECRET',
@@ -66,7 +65,6 @@ oauth2Client.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN })
 const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
 // ─── Gmail: registra watch Pub/Sub ────────────────────────────────────────────
-// Va rinnovato ogni 7 giorni — lo gestiamo con un interval
 async function registerGmailWatch() {
   try {
     const res = await gmail.users.watch({
@@ -85,7 +83,6 @@ async function registerGmailWatch() {
   }
 }
 
-// Rinnovo automatico ogni 6 giorni (scade ogni 7)
 async function scheduleWatchRenewal() {
   await registerGmailWatch();
   setInterval(async () => {
@@ -121,9 +118,8 @@ function extractParts(payload) {
   function walk(part) {
     const mime = part.mimeType || '';
     const data = part.body?.data;
-
-    if (mime === 'text/plain' && data)  text += decodeBase64Url(data);
-    if (mime === 'text/html'  && data)  html += decodeBase64Url(data);
+    if (mime === 'text/plain' && data) text += decodeBase64Url(data);
+    if (mime === 'text/html'  && data) html += decodeBase64Url(data);
     if (part.parts) part.parts.forEach(walk);
   }
 
@@ -136,7 +132,6 @@ const NETFLIX_LINK_RE = /https:\/\/www\.netflix\.com\/account\/update-primary-lo
 
 function extractNetflixUpdateLink(text, html) {
   if (html) {
-    // Cerca prima negli href (più puliti)
     const hrefRe = /href="(https:\/\/www\.netflix\.com\/account\/update-primary-location[^"]+)"/gi;
     const m = hrefRe.exec(html);
     if (m) {
@@ -168,19 +163,16 @@ function subjectMatches(subject) {
   return SUBJECT_KEYWORDS.some(k => lower.includes(k.toLowerCase()));
 }
 
-// ─── Playwright: browser warm persistente ────────────────────────────────────
-let warmBrowser   = null;
-let warmBrowserCtx = null;
+// ─── Browser warm persistente ─────────────────────────────────────────────────
+let warmBrowser = null;
 
 async function getWarmBrowser() {
   if (warmBrowser) {
     try {
-      // Playwright non ha .version() ma possiamo verificare con isConnected
       if (warmBrowser.isConnected()) return warmBrowser;
     } catch (_) {}
     log('WARN', 'Browser warm non connesso, ricreo.');
-    warmBrowser    = null;
-    warmBrowserCtx = null;
+    warmBrowser = null;
   }
 
   log('INFO', 'Avvio browser Playwright (Chromium)...');
@@ -201,15 +193,13 @@ async function getWarmBrowser() {
 
   warmBrowser.on('disconnected', () => {
     log('WARN', 'Browser disconnesso.');
-    warmBrowser    = null;
-    warmBrowserCtx = null;
+    warmBrowser = null;
   });
 
   log('INFO', '✅ Browser warm pronto.');
   return warmBrowser;
 }
 
-// Pre-warm all'avvio
 getWarmBrowser().catch(e => log('WARN', 'Pre-warm fallito:', e.message));
 
 // ─── Playwright: click conferma ───────────────────────────────────────────────
@@ -225,12 +215,11 @@ async function clickButtonOnPage(url, maxRetries = 3) {
   try {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       log('INFO', `Tentativo ${attempt}/${maxRetries} → ${url}`);
-      let context, page;
+      let context;
       try {
         const browser = await getWarmBrowser();
         const idx = (attempt - 1) % USER_AGENTS.length;
 
-        // Playwright usa BrowserContext per isolamento perfetto per tab
         context = await browser.newContext({
           userAgent: USER_AGENTS[idx],
           viewport: { width: 1920, height: 1080 },
@@ -238,16 +227,13 @@ async function clickButtonOnPage(url, maxRetries = 3) {
           extraHTTPHeaders: {
             'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8'
           },
-          // Blocca risorse inutili per velocizzare
           serviceWorkers: 'block'
         });
 
-        // Anti-detection
         await context.addInitScript(() => {
           Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
         });
 
-        // Blocca immagini, font, media per velocizzare
         await context.route('**/*', (route) => {
           const type = route.request().resourceType();
           if (['image', 'font', 'media', 'stylesheet'].includes(type)) {
@@ -257,34 +243,27 @@ async function clickButtonOnPage(url, maxRetries = 3) {
           }
         });
 
-        page = await context.newPage();
+        const page = await context.newPage();
 
-        // Pausa anti-bot minima
         await sleep(300 + Math.random() * 400);
-
-        // Playwright gestisce automaticamente i redirect e attende il DOM
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
         await sleep(800);
 
         const title = await page.title();
         log('INFO', `Pagina caricata: "${title}"`);
 
-        // Playwright ha auto-wait nativo — molto più affidabile di Puppeteer
-        // per click su elementi che appaiono dopo rendering JS
         let clicked = false;
 
         for (const keyword of BUTTON_KEYWORDS) {
           try {
-            // Cerca bottoni con testo che contiene la keyword (case-insensitive)
             const btn = page.locator(
               `button:has-text("${keyword}"), input[type="submit"][value*="${keyword}" i], a[role="button"]:has-text("${keyword}")`
             ).first();
 
-            // Verifica se esiste ed è visibile (senza aspettare — timeout 2s)
             const isVisible = await btn.isVisible({ timeout: 2000 }).catch(() => false);
             if (isVisible) {
               await btn.click({ timeout: 5000 });
-              log('INFO', `✅ Bottone "${keyword}" cliccato con Playwright locator.`);
+              log('INFO', `✅ Bottone "${keyword}" cliccato.`);
               clicked = true;
               break;
             }
@@ -293,7 +272,6 @@ async function clickButtonOnPage(url, maxRetries = 3) {
           }
         }
 
-        // Fallback: primo bottone visibile
         if (!clicked) {
           try {
             const firstBtn = page.locator('button, input[type="submit"]').first();
@@ -330,7 +308,6 @@ async function clickButtonOnPage(url, maxRetries = 3) {
           await sleep(delay);
         }
       } finally {
-        // Chiudi contesto (non browser)
         if (context) {
           await context.close().catch(e => log('WARN', 'Chiusura context:', e.message));
         }
@@ -382,7 +359,6 @@ async function processMessage(messageId) {
     return;
   }
 
-  // Marca subito per evitare race condition in caso di webhook doppio
   await markProcessed(messageId);
 
   let message;
@@ -423,14 +399,11 @@ async function processMessage(messageId) {
   }
 }
 
-// ─── Express server ───────────────────────────────────────────────────────────
+// ─── Express + Webhook ────────────────────────────────────────────────────────
 const app = express();
 app.use(express.json());
 
-// Webhook ricevuto da Google Pub/Sub
-// Google invia POST con body: { message: { data: base64(JSON), messageId, ... }, subscription }
 app.post('/webhook', async (req, res) => {
-  // Rispondi subito 200 a Google (altrimenti ri-invia)
   res.sendStatus(200);
 
   try {
@@ -440,37 +413,44 @@ app.post('/webhook', async (req, res) => {
       return;
     }
 
-    // Decodifica il payload Pub/Sub
     const payload = JSON.parse(
       Buffer.from(pubsubMsg.data, 'base64').toString('utf8')
     );
     log('INFO', `Webhook ricevuto: emailAddress=${payload.emailAddress}, historyId=${payload.historyId}`);
 
-    // Recupera la history per ottenere i messageId delle nuove email
+    // Recupera l'ultimo historyId salvato
+    const savedHistoryId = await redis.get('gmail:historyId');
+    const startHistoryId = savedHistoryId || String(Number(payload.historyId) - 1);
+    log('INFO', `Uso startHistoryId: ${startHistoryId}`);
+
+    // Salva il nuovo historyId
+    await redis.set('gmail:historyId', String(payload.historyId));
+
     const historyRes = await gmail.users.history.list({
       userId: 'me',
-      startHistoryId: payload.historyId,
+      startHistoryId: startHistoryId,
       historyTypes: ['messageAdded'],
       labelId: 'INBOX'
     });
 
     const historyItems = historyRes.data.history || [];
+    log('INFO', `History items trovati: ${historyItems.length}`);
+
     const messageIds = historyItems
       .flatMap(h => h.messagesAdded || [])
       .map(m => m.message.id)
       .filter(Boolean);
 
-    log('INFO', `Nuovi messaggi rilevati: ${messageIds.length}`);
+    const uniqueIds = [...new Set(messageIds)];
+    log('INFO', `Nuovi messaggi rilevati: ${uniqueIds.length}`);
 
-    // Processa ogni messaggio (in parallelo se sono più di uno)
-    await Promise.all(messageIds.map(id => processMessage(id)));
+    await Promise.all(uniqueIds.map(id => processMessage(id)));
 
   } catch (e) {
     log('ERROR', 'Errore gestione webhook:', e.message);
   }
 });
 
-// Health check
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -508,9 +488,15 @@ async function main() {
   await redis.connect();
   log('INFO', '✅ Redis connesso.');
 
-  app.listen(PORT, () => log('INFO', `Server in ascolto su porta ${PORT}`));
+  // Inizializza historyId se non esiste
+  const existing = await redis.get('gmail:historyId');
+  if (!existing) {
+    const profile = await gmail.users.getProfile({ userId: 'me' });
+    await redis.set('gmail:historyId', String(profile.data.historyId));
+    log('INFO', `historyId iniziale salvato: ${profile.data.historyId}`);
+  }
 
-  // Registra Gmail watch (e rinnova ogni 6 giorni)
+  app.listen(PORT, () => log('INFO', `Server in ascolto su porta ${PORT}`));
   await scheduleWatchRenewal();
 }
 
