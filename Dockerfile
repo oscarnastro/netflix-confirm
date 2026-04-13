@@ -1,6 +1,5 @@
 FROM node:20-slim
 
-# Dipendenze Chromium per Playwright
 RUN apt-get update && apt-get install -y \
     chromium \
     fonts-liberation \
@@ -24,9 +23,10 @@ RUN apt-get update && apt-get install -y \
     libxrandr2 \
     wget \
     --no-install-recommends && \
+    # Stampa il path esatto di chromium durante il build
+    which chromium && chromium --version && \
     rm -rf /var/lib/apt/lists/*
 
-# Usa Chromium di sistema, skip download Playwright
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV PLAYWRIGHT_EXEC_PATH=/usr/bin/chromium
 
