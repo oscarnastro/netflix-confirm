@@ -321,6 +321,69 @@ async function clickButtonOnPage(url, maxRetries = 3) {
   }
 }
 
+// ─── Fetch: tentativo senza browser ──────────────────────────────────────────
+async function tryFetchConfirm(url) {
+  try {
+    log('INFO', '🔍 Tentativo fetch senza browser...');
+
+    const response = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/123.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'it-IT,it;q=0.9',
+        'Cookie': `NetflixId=${process.env.NETFLIX_ID}; SecureNetflixId=${process.env.NETFLIX_SECURE_ID}`
+      }
+    });
+
+    const finalUrl = response.url;
+    const html = await response.text();
+
+    log('INFO', `Fetch risposta: HTTP ${response.status} | URL finale: ${finalUrl}`);
+
+    // Se ha redirectato al login → fallito
+    if (finalUrl.includes('/login')) {
+      log('WARN', '⚠️ Fetch: redirect al login, cookie scaduti o non validi.');
+      return false;
+    }
+
+    // Se la pagina è solo React vuoto → serve JS
+    if (html.includes('appMountPoint') && !html.includes('update-primary-location')) {
+      log('WARN', '⚠️ Fetch: pagina React vuota, serve browser.');
+      return false;
+    }
+
+    // Controlla se la pagina contiene segnali di successo
+    const successKeywords = ['confermato', 'confirmed', 'success', 'aggiornato', 'updated', 'thank', 'grazie'];
+    const found = successKeywords.find(k => html.toLowerCase().includes(k));
+    if (found) {
+      log('INFO', `✅ Fetch: conferma rilevata (keyword: "${found}"). Nessun browser necessario!`);
+      return true;
+    }
+
+    // Controlla se c'è ancora un form/bottone → potrebbe servire un POST o JS
+    const needsClick = ['<button', '<form', 'type="submit"'].some(k => html.includes(k));
+    if (needsClick) {
+      log('WARN', `⚠️ Fetch: pagina contiene form/bottone, potrebbe servire interazione JS. Snippet HTML:\n${html.substring(0, 500)}`);
+      return false;
+    }
+
+    // HTTP 200 senza login e senza form → assumiamo successo
+    if (response.status === 200) {
+      log('INFO', `✅ Fetch: HTTP 200 senza redirect login né form. Assumo conferma OK. Snippet:\n${html.substring(0, 300)}`);
+      return true;
+    }
+
+    log('WARN', `⚠️ Fetch: risposta non interpretabile (status ${response.status}), passo al browser.`);
+    return false;
+
+  } catch (e) {
+    log('WARN', `⚠️ Fetch fallito con errore: ${e.message}, passo al browser.`);
+    return false;
+  }
+}
+
 // ─── Notifiche errore via email ───────────────────────────────────────────────
 let lastErrorMailAt = 0;
 
@@ -387,9 +450,24 @@ async function processMessage(messageId) {
     return;
   }
 
+  // ── Prova prima con fetch (se cookie configurati) ──
+  const hasCookies = process.env.NETFLIX_ID && process.env.NETFLIX_SECURE_ID;
+
+  if (hasCookies) {
+    const fetchOk = await tryFetchConfirm(link);
+    if (fetchOk) {
+      log('INFO', '✅ Conferma effettuata via fetch (no browser)!');
+      return;
+    }
+    log('INFO', '↩️ Fetch non sufficiente, passo a Playwright...');
+  } else {
+    log('INFO', 'NETFLIX_ID/NETFLIX_SECURE_ID non configurati, uso direttamente Playwright.');
+  }
+
+  // ── Fallback: Playwright ──
   const success = await clickButtonOnPage(link);
   if (success) {
-    log('INFO', '✅ Conferma effettuata con successo!');
+    log('INFO', '✅ Conferma effettuata via Playwright!');
   } else {
     log('ERROR', '❌ Conferma fallita dopo tutti i tentativi.');
     await sendErrorMail(
