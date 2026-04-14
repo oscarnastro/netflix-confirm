@@ -86,6 +86,10 @@ ERROR_EMAIL_TO=tua@gmail.com
 
 # (Opzionale) Path del browser Chromium (solo in locale se diverso dal default)
 PLAYWRIGHT_EXEC_PATH=/usr/bin/chromium
+
+# (Opzionale) Cookie Netflix per tentativo fetch senza browser e autenticazione Playwright
+NETFLIX_ID=il_tuo_NetflixId
+NETFLIX_SECURE_ID=il_tuo_SecureNetflixId
 ```
 
 | Variabile | Obbligatoria | Descrizione |
@@ -98,6 +102,8 @@ PLAYWRIGHT_EXEC_PATH=/usr/bin/chromium
 | `GMAIL_ADDRESS` | ❌ | Indirizzo Gmail mittente delle notifiche di errore |
 | `ERROR_EMAIL_TO` | ❌ | Destinatario email di errore (default: `oscarnastro@gmail.com`) |
 | `PLAYWRIGHT_EXEC_PATH` | ❌ | Path del binario Chromium (in Docker è automatico) |
+| `NETFLIX_ID` | ❌ | Valore del cookie `NetflixId` (da DevTools → Application → Cookies su netflix.com). Se configurato, il bot tenta prima la conferma via fetch HTTP (senza avviare il browser) e inietta il cookie anche nel contesto Playwright |
+| `NETFLIX_SECURE_ID` | ❌ | Valore del cookie `SecureNetflixId` (vedi `NETFLIX_ID`) |
 
 ---
 

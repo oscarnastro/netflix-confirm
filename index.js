@@ -230,6 +230,14 @@ async function clickButtonOnPage(url, maxRetries = 3) {
           serviceWorkers: 'block'
         });
 
+        if (process.env.NETFLIX_ID && process.env.NETFLIX_SECURE_ID) {
+          await context.addCookies([
+            { name: 'NetflixId',       value: process.env.NETFLIX_ID,        domain: '.netflix.com', path: '/' },
+            { name: 'SecureNetflixId', value: process.env.NETFLIX_SECURE_ID, domain: '.netflix.com', path: '/' }
+          ]);
+          log('INFO', 'Cookie Netflix iniettati nel contesto Playwright.');
+        }
+
         await context.addInitScript(() => {
           Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
         });
