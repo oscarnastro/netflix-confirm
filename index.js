@@ -529,6 +529,121 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
+// ─── SNIFF: intercetta le chiamate di rete al click ───────────────────────────
+// Usare UNA VOLTA SOLA con un link fresco, poi rimuovere.
+app.get('/sniff', async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ error: 'url mancante' });
+
+  const captured = [];
+  let context;
+
+  try {
+    const browser = await getWarmBrowser();
+    context = await browser.newContext({
+      userAgent: USER_AGENTS[0],
+      viewport: { width: 1920, height: 1080 },
+      locale: 'it-IT',
+    });
+
+    const page = await context.newPage();
+
+    // Intercetta TUTTE le request in uscita
+    page.on('request', request => {
+      const method = request.method();
+      const reqUrl = request.url();
+      const headers = request.headers();
+      const postData = request.postData();
+
+      // Cattura solo POST/PUT/PATCH o chiamate API Netflix
+      if (
+        ['POST', 'PUT', 'PATCH'].includes(method) ||
+        reqUrl.includes('api.netflix.com') ||
+        reqUrl.includes('/api/') ||
+        reqUrl.includes('update-primary-location') ||
+        reqUrl.includes('updateMyAccount') ||
+        reqUrl.includes('household')
+      ) {
+        captured.push({
+          method,
+          url: reqUrl,
+          headers: {
+            'cookie': headers['cookie'],
+            'content-type': headers['content-type'],
+            'x-netflix-esn': headers['x-netflix-esn'],
+            'authorization': headers['authorization'],
+          },
+          postData: postData || null,
+        });
+        log('INFO', `[SNIFF] ${method} ${reqUrl}`);
+        if (postData) log('INFO', `[SNIFF] body: ${postData.substring(0, 200)}`);
+      }
+    });
+
+    // Intercetta anche le response per vedere i risultati
+    page.on('response', async response => {
+      const respUrl = response.url();
+      if (
+        respUrl.includes('api.netflix.com') ||
+        respUrl.includes('/api/') ||
+        respUrl.includes('update-primary-location') ||
+        respUrl.includes('household')
+      ) {
+        try {
+          const body = await response.text();
+          log('INFO', `[SNIFF] RESPONSE ${response.status()} ${respUrl} → ${body.substring(0, 300)}`);
+          // Aggiorna l'ultima entry catturata con la response
+          const last = captured[captured.length - 1];
+          if (last) last.response = { status: response.status(), body: body.substring(0, 500) };
+        } catch (_) {}
+      }
+    });
+
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await sleep(1500);
+
+    const title = await page.title();
+    log('INFO', `[SNIFF] Pagina caricata: "${title}"`);
+
+    // Clicca il bottone
+    let clicked = false;
+    for (const keyword of BUTTON_KEYWORDS) {
+      const btn = page.locator(
+        `button:has-text("${keyword}"), input[type="submit"][value*="${keyword}" i], a[role="button"]:has-text("${keyword}")`
+      ).first();
+      const isVisible = await btn.isVisible({ timeout: 2000 }).catch(() => false);
+      if (isVisible) {
+        log('INFO', `[SNIFF] Clicco bottone "${keyword}"...`);
+        await btn.click({ timeout: 5000 });
+        clicked = true;
+        break;
+      }
+    }
+
+    if (!clicked) {
+      const firstBtn = page.locator('button, input[type="submit"]').first();
+      const isVisible = await firstBtn.isVisible({ timeout: 2000 }).catch(() => false);
+      if (isVisible) {
+        await firstBtn.click({ timeout: 5000 });
+        clicked = true;
+        log('INFO', '[SNIFF] Bottone fallback cliccato.');
+      }
+    }
+
+    // Aspetta che le chiamate asincrone partano dopo il click
+    await sleep(3000);
+
+    log('INFO', `[SNIFF] Totale chiamate catturate: ${captured.length}`);
+    res.json({ clicked, pageTitle: title, captured });
+
+  } catch (e) {
+    log('ERROR', '[SNIFF] Errore:', e.message);
+    res.status(500).json({ error: e.message, captured });
+  } finally {
+    if (context) await context.close().catch(() => {});
+  }
+});
+
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
