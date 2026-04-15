@@ -449,6 +449,12 @@ async function processMessage(messageId) {
     log('INFO', 'Nessun link di aggiornamento trovato.');
     return;
   }
+  
+  // Aggiungi all'inizio di processMessage(), dopo il link check
+if (process.env.SNIFF_MODE === 'true') {
+  log('INFO', `[SNIFF_MODE] Link trovato, NON processo: ${link}`);
+  return;
+}
 
   // ── Prova prima con fetch (se cookie configurati) ──
   const hasCookies = process.env.NETFLIX_ID && process.env.NETFLIX_SECURE_ID;
