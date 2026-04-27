@@ -60,7 +60,18 @@ const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_SECRET,
   'https://developers.google.com/oauthplayground'
 );
-oauth2Client.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+
+// When Google issues new tokens (e.g. rotated refresh_token), persist to Redis
+oauth2Client.on('tokens', async (tokens) => {
+  if (tokens.refresh_token) {
+    try {
+      await redis.set('gmail:refresh_token', tokens.refresh_token);
+      log('INFO', 'Nuovo refresh_token ricevuto e salvato in Redis.');
+    } catch (e) {
+      log('ERROR', 'Salvataggio refresh_token in Redis fallito:', e.message);
+    }
+  }
+});
 
 const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
@@ -75,20 +86,44 @@ async function registerGmailWatch() {
         labelFilterBehavior: 'INCLUDE'
       }
     });
-    log('INFO', `Gmail watch registrato. Scade: ${new Date(Number(res.data.expiration)).toISOString()}`);
-    return res.data;
+    const expiration = Number(res.data.expiration);
+    log('INFO', `Gmail watch registrato. Scade: ${new Date(expiration).toISOString()}`);
+    return expiration;
   } catch (e) {
     log('ERROR', 'Registrazione Gmail watch fallita:', e.message);
     throw e;
   }
 }
 
-async function scheduleWatchRenewal() {
-  await registerGmailWatch();
-  setInterval(async () => {
-    log('INFO', 'Rinnovo Gmail watch...');
-    await registerGmailWatch().catch(e => log('ERROR', 'Rinnovo watch fallito:', e.message));
-  }, 6 * 24 * 60 * 60 * 1000);
+async function scheduleWatchRenewal(retryDelayMs = 5 * 60 * 1000) {
+  try {
+    const expiration = await registerGmailWatch();
+    // Schedule next renewal 12 hours before actual expiry (minimum 1 hour from now)
+    const safetyMarginMs = 12 * 60 * 60 * 1000;
+    const msUntilExpiry = expiration - Date.now();
+    if (msUntilExpiry <= 0) {
+      // Watch already expired; renew immediately (short delay to avoid tight loop)
+      log('WARN', 'Watch già scaduto, rinnovo immediato tra 1 minuto.');
+      setTimeout(() => scheduleWatchRenewal(), 60 * 1000);
+      return;
+    }
+    const delay = Math.max(msUntilExpiry - safetyMarginMs, 60 * 60 * 1000);
+    log('INFO', `Prossimo rinnovo watch tra ${Math.floor(delay / 3600000)}h.`);
+    setTimeout(() => scheduleWatchRenewal(), delay);
+  } catch (e) {
+    if (e.message.includes('invalid_grant')) {
+      log('ERROR', 'Token OAuth scaduto o revocato. Intervento manuale necessario.');
+      await sendErrorMail(
+        'Script Netflix: OAuth token scaduto (invalid_grant)',
+        `Il refresh token Google OAuth è scaduto o revocato (invalid_grant).\n\nRigenerare il token su https://developers.google.com/oauthplayground, quindi aggiornare la variabile d\'ambiente GOOGLE_REFRESH_TOKEN e riavviare il servizio (oppure salvare il nuovo token direttamente in Redis con la chiave gmail:refresh_token).\n\nTimestamp: ${new Date().toISOString()}`
+      ).catch(() => {});
+      return; // manual intervention required, do not retry
+    }
+    // For transient errors, retry with exponential backoff (max 1 hour)
+    log('INFO', `Riprovo registrazione watch tra ${Math.round(retryDelayMs / 60000)} minuti...`);
+    const nextDelay = Math.min(retryDelayMs * 2, 60 * 60 * 1000);
+    setTimeout(() => scheduleWatchRenewal(nextDelay), retryDelayMs);
+  }
 }
 
 // ─── Gmail: leggi messaggio per ID ───────────────────────────────────────────
@@ -686,6 +721,13 @@ process.on('SIGINT',  () => shutdown('SIGINT'));
 async function main() {
   await redis.connect();
   log('INFO', '✅ Redis connesso.');
+
+  // Load refresh token from Redis (updated by token-rotation events) or fall back to env var
+  const savedRefreshToken = await redis.get('gmail:refresh_token');
+  if (savedRefreshToken) {
+    log('INFO', 'Refresh token caricato da Redis.');
+  }
+  oauth2Client.setCredentials({ refresh_token: savedRefreshToken || process.env.GOOGLE_REFRESH_TOKEN });
 
   // Inizializza historyId se non esiste
   const existing = await redis.get('gmail:historyId');
