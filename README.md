@@ -1,23 +1,23 @@
 # 🎬 Netflix Home Confirm
 
-Bot che conferma automaticamente il **nucleo domestico Netflix** alla ricezione dell'email di verifica. Monitora la tua casella Gmail tramite Google Cloud Pub/Sub, individua le email di Netflix che richiedono la conferma della posizione principale e clicca automaticamente il bottone di conferma tramite un browser headless (Playwright/Chromium).
+A bot that automatically confirms the **Netflix household** upon receiving the verification email. It monitors your Gmail inbox via Google Cloud Pub/Sub, detects Netflix emails requesting primary location confirmation, and automatically clicks the confirmation button using a headless browser (Playwright/Chromium).
 
 ---
 
-## ✨ Funzionalità
+## ✨ Features
 
-- 📧 **Monitoraggio Gmail in tempo reale** via Google Cloud Pub/Sub webhook
-- 🔍 **Rilevamento automatico** delle email Netflix di conferma nucleo domestico
-- 🖱️ **Click automatico** sul bottone di conferma tramite Playwright (Chromium headless)
-- 🔁 **Retry con back-off** in caso di errore (fino a 3 tentativi)
-- 🗄️ **Deduplicazione** messaggi tramite Redis (TTL 24 ore)
-- 📬 **Notifica email** in caso di fallimento (con rate limiting a 10 minuti)
-- 💚 **Health check** endpoint per monitoraggio uptime
-- 🛡️ **Anti-bot evasion**: header HTTP realistici, blocco delle risorse inutili (immagini, font, CSS)
+- 📧 **Real-time Gmail monitoring** via Google Cloud Pub/Sub webhook
+- 🔍 **Automatic detection** of Netflix household confirmation emails
+- 🖱️ **Automatic click** on the confirmation button via Playwright (headless Chromium)
+- 🔁 **Retry with back-off** on error (up to 3 attempts)
+- 🗄️ **Message deduplication** via Redis (24-hour TTL)
+- 📬 **Email notification** on failure (with 10-minute rate limiting)
+- 💚 **Health check** endpoint for uptime monitoring
+- 🛡️ **Anti-bot evasion**: realistic HTTP headers, blocking of unnecessary resources (images, fonts, CSS)
 
 ---
 
-## 🏗️ Architettura
+## 🏗️ Architecture
 
 ```
 Gmail ──► Google Cloud Pub/Sub ──► /webhook (Express)
@@ -26,29 +26,29 @@ Gmail ──► Google Cloud Pub/Sub ──► /webhook (Express)
                                          │
                                    Gmail API (fetch email)
                                          │
-                              Playwright (click conferma)
+                              Playwright (click confirm)
 ```
 
-1. Gmail invia una notifica a Google Cloud Pub/Sub ogni volta che arriva un nuovo messaggio.
-2. Il webhook Express riceve la notifica, recupera i nuovi messaggi tramite Gmail History API.
-3. Se il mittente è `netflix.com` e l'oggetto contiene parole chiave rilevanti, viene estratto il link di conferma.
-4. Playwright apre il link in un browser headless e clicca il bottone di conferma.
-5. In caso di fallimento, viene inviata un'email di errore.
+1. Gmail sends a notification to Google Cloud Pub/Sub every time a new message arrives.
+2. The Express webhook receives the notification and fetches new messages via the Gmail History API.
+3. If the sender is `netflix.com` and the subject contains relevant keywords, the confirmation link is extracted.
+4. Playwright opens the link in a headless browser and clicks the confirmation button.
+5. On failure, an error email is sent.
 
 ---
 
-## 🔧 Requisiti
+## 🔧 Requirements
 
 - **Node.js** ≥ 18
-- **Redis** (es. Redis Cloud, Upstash, Railway Redis)
-- **Account Google Cloud** con:
-  - Gmail API abilitata
-  - Google Cloud Pub/Sub abilitato
-  - OAuth 2.0 Client ID configurato
+- **Redis** (e.g. Redis Cloud, Upstash, Railway Redis)
+- **Google Cloud account** with:
+  - Gmail API enabled
+  - Google Cloud Pub/Sub enabled
+  - OAuth 2.0 Client ID configured
 
 ---
 
-## 📦 Installazione locale
+## 📦 Local Installation
 
 ```bash
 git clone https://github.com/oscarnastro/netflix-confirm.git
@@ -56,7 +56,7 @@ cd netflix-confirm
 npm install
 ```
 
-### Installare il browser Chromium (solo in locale, non in Docker)
+### Install the Chromium browser (local only, not in Docker)
 
 ```bash
 npx playwright install chromium
@@ -64,9 +64,9 @@ npx playwright install chromium
 
 ---
 
-## ⚙️ Configurazione
+## ⚙️ Configuration
 
-Crea un file `.env` nella root del progetto con le seguenti variabili:
+Create a `.env` file in the project root with the following variables:
 
 ```env
 # Google OAuth2
@@ -80,65 +80,65 @@ PUBSUB_TOPIC=projects/YOUR_PROJECT_ID/topics/YOUR_TOPIC_NAME
 # Redis
 REDIS_URL=redis://localhost:6379
 
-# (Opzionale) Email per notifiche di errore
-GMAIL_ADDRESS=tua@gmail.com
-ERROR_EMAIL_TO=tua@gmail.com
+# (Optional) Email address for error notifications
+GMAIL_ADDRESS=your@gmail.com
+ERROR_EMAIL_TO=your@gmail.com
 
-# (Opzionale) Path del browser Chromium (solo in locale se diverso dal default)
+# (Optional) Chromium browser path (local only, if different from default)
 PLAYWRIGHT_EXEC_PATH=/usr/bin/chromium
 ```
 
-| Variabile | Obbligatoria | Descrizione |
+| Variable | Required | Description |
 |---|---|---|
-| `GOOGLE_CLIENT_ID` | ✅ | Client ID OAuth2 Google |
-| `GOOGLE_CLIENT_SECRET` | ✅ | Client Secret OAuth2 Google |
-| `GOOGLE_REFRESH_TOKEN` | ✅ | Refresh token OAuth2 (ottenuto via OAuth Playground) |
-| `PUBSUB_TOPIC` | ✅ | Nome completo del topic Pub/Sub |
-| `REDIS_URL` | ✅ | URL di connessione Redis |
-| `GMAIL_ADDRESS` | ❌ | Indirizzo Gmail mittente delle notifiche di errore |
-| `ERROR_EMAIL_TO` | ❌ | Destinatario email di errore (default: `oscarnastro@gmail.com`) |
-| `PLAYWRIGHT_EXEC_PATH` | ❌ | Path del binario Chromium (in Docker è automatico) |
+| `GOOGLE_CLIENT_ID` | ✅ | Google OAuth2 Client ID |
+| `GOOGLE_CLIENT_SECRET` | ✅ | Google OAuth2 Client Secret |
+| `GOOGLE_REFRESH_TOKEN` | ✅ | OAuth2 refresh token (obtained via OAuth Playground) |
+| `PUBSUB_TOPIC` | ✅ | Full name of the Pub/Sub topic |
+| `REDIS_URL` | ✅ | Redis connection URL |
+| `GMAIL_ADDRESS` | ❌ | Gmail address used to send error notifications |
+| `ERROR_EMAIL_TO` | ❌ | Error email recipient (default: `oscarnastro@gmail.com`) |
+| `PLAYWRIGHT_EXEC_PATH` | ❌ | Chromium binary path (set automatically in Docker) |
 
 ---
 
-## 🔑 Come ottenere le credenziali Google
+## 🔑 How to obtain Google credentials
 
-### 1. Creare le credenziali OAuth2
+### 1. Create OAuth2 credentials
 
-1. Vai su [Google Cloud Console](https://console.cloud.google.com/)
-2. Crea un progetto (o selezionane uno esistente)
-3. Abilita le API: **Gmail API** e **Cloud Pub/Sub API**
-4. Vai su **Credenziali** → **Crea credenziali** → **ID client OAuth 2.0**
-5. Tipo applicazione: **Applicazione web**
-6. URI di reindirizzamento autorizzato: `https://developers.google.com/oauthplayground`
-7. Salva `Client ID` e `Client Secret`
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a project (or select an existing one)
+3. Enable the APIs: **Gmail API** and **Cloud Pub/Sub API**
+4. Go to **Credentials** → **Create credentials** → **OAuth 2.0 Client ID**
+5. Application type: **Web application**
+6. Authorized redirect URI: `https://developers.google.com/oauthplayground`
+7. Save the `Client ID` and `Client Secret`
 
-### 2. Ottenere il Refresh Token
+### 2. Obtain the Refresh Token
 
-1. Vai su [OAuth 2.0 Playground](https://developers.google.com/oauthplayground/)
-2. Clicca sull'icona ⚙️ in alto a destra → abilita **"Use your own OAuth credentials"**
-3. Inserisci il tuo `Client ID` e `Client Secret`
-4. Nel campo **Step 1**, seleziona/inserisci gli scope:
+1. Go to [OAuth 2.0 Playground](https://developers.google.com/oauthplayground/)
+2. Click the ⚙️ icon in the top right → enable **"Use your own OAuth credentials"**
+3. Enter your `Client ID` and `Client Secret`
+4. In the **Step 1** field, select/enter the scopes:
    - `https://www.googleapis.com/auth/gmail.readonly`
    - `https://www.googleapis.com/auth/gmail.send`
    - `https://www.googleapis.com/auth/gmail.modify`
-5. Clicca **"Authorize APIs"** e accedi con il tuo account Google
-6. In **Step 2** clicca **"Exchange authorization code for tokens"**
-7. Copia il `Refresh token`
+5. Click **"Authorize APIs"** and sign in with your Google account
+6. In **Step 2** click **"Exchange authorization code for tokens"**
+7. Copy the `Refresh token`
 
-### 3. Configurare Google Cloud Pub/Sub
+### 3. Configure Google Cloud Pub/Sub
 
 ```bash
-# Crea il topic
+# Create the topic
 gcloud pubsub topics create gmail-netflix
 
-# Crea la subscription push (sostituisci YOUR_URL con l'URL del tuo server)
+# Create the push subscription (replace YOUR_URL with your server URL)
 gcloud pubsub subscriptions create gmail-netflix-sub \
   --topic=gmail-netflix \
   --push-endpoint=https://YOUR_URL/webhook \
   --ack-deadline=60
 
-# Autorizza Gmail a pubblicare sul topic
+# Authorize Gmail to publish to the topic
 gcloud pubsub topics add-iam-policy-binding gmail-netflix \
   --member="serviceAccount:gmail-api-push@system.gserviceaccount.com" \
   --role="roles/pubsub.publisher"
@@ -146,17 +146,17 @@ gcloud pubsub topics add-iam-policy-binding gmail-netflix \
 
 ---
 
-## 🚀 Avvio
+## 🚀 Running
 
-### In locale
+### Locally
 
 ```bash
 npm start
-# oppure in modalità watch (riavvio automatico)
+# or in watch mode (auto-restart)
 npm run dev
 ```
 
-### Con Docker
+### With Docker
 
 ```bash
 docker build -t netflix-confirm .
@@ -168,20 +168,20 @@ docker run -d \
 
 ---
 
-## ☁️ Deploy su Railway
+## ☁️ Deploy on Railway
 
-Il progetto è preconfigurato per [Railway](https://railway.app/) tramite il file `railway.toml`.
+The project is pre-configured for [Railway](https://railway.app/) via the `railway.toml` file.
 
-1. Crea un nuovo progetto su Railway
-2. Collega questo repository GitHub
-3. Aggiungi un servizio **Redis** da Railway
-4. Configura le variabili d'ambiente nel pannello Railway (vedi tabella sopra)
-5. Railway effettuerà il deploy automaticamente usando il `Dockerfile`
+1. Create a new project on Railway
+2. Connect this GitHub repository
+3. Add a **Redis** service from Railway
+4. Set the environment variables in the Railway dashboard (see table above)
+5. Railway will deploy automatically using the `Dockerfile`
 
-Il file `railway.toml` configura:
-- Build tramite `Dockerfile`
-- Restart policy `ON_FAILURE` (max 5 tentativi)
-- Health check su `/health` ogni 30 secondi
+The `railway.toml` file configures:
+- Build via `Dockerfile`
+- Restart policy `ON_FAILURE` (max 5 attempts)
+- Health check on `/health` every 30 seconds
 
 ---
 
@@ -189,7 +189,7 @@ Il file `railway.toml` configura:
 
 ### `POST /webhook`
 
-Riceve le notifiche da Google Cloud Pub/Sub.
+Receives notifications from Google Cloud Pub/Sub.
 
 **Body (JSON):**
 ```json
@@ -200,15 +200,15 @@ Riceve le notifiche da Google Cloud Pub/Sub.
 }
 ```
 
-Risponde sempre con `200 OK` immediatamente (come richiesto da Pub/Sub), poi elabora il messaggio in background.
+Always responds with `200 OK` immediately (as required by Pub/Sub), then processes the message in the background.
 
 ---
 
 ### `GET /health`
 
-Endpoint di health check.
+Health check endpoint.
 
-**Risposta:**
+**Response:**
 ```json
 {
   "status": "ok",
@@ -220,83 +220,83 @@ Endpoint di health check.
 
 ---
 
-## 🔍 Come funziona il rilevamento email
+## 🔍 How email detection works
 
-L'email Netflix viene considerata rilevante se soddisfa **entrambe** le condizioni:
+A Netflix email is considered relevant if it meets **both** conditions:
 
-1. **Mittente** contiene `netflix.com`
-2. **Oggetto** contiene almeno una delle parole chiave:
+1. **Sender** contains `netflix.com`
+2. **Subject** contains at least one of the following keywords:
    - `Importante`
    - `aggiornare`
    - `Netflix`
    - `posizione principale`
 
-Il link di conferma viene cercato nel corpo HTML (prima nei tag `href`, poi come URL nuda) e nel testo plain.
+The confirmation link is searched in the HTML body (first in `href` attributes, then as a bare URL) and in the plain text.
 
-Pattern ricercato: `https://www.netflix.com/account/update-primary-location...`
+Searched pattern: `https://www.netflix.com/account/update-primary-location...`
 
-Il bottone viene individuato cercando nell'ordine:
-`conferma` → `confirm` → `update` → `aggiorna` → `continue` → *(primo bottone disponibile come fallback)*
+The button is located by searching in this order:
+`conferma` → `confirm` → `update` → `aggiorna` → `continue` → *(first available button as fallback)*
 
 ---
 
 ## 🗄️ Redis
 
-Redis viene usato per:
+Redis is used for:
 
-| Chiave | TTL | Descrizione |
+| Key | TTL | Description |
 |---|---|---|
-| `netflix:uid:<messageId>` | 24 ore | Deduplicazione messaggi già processati |
-| `gmail:historyId` | Persistente | Ultimo `historyId` Gmail processato |
+| `netflix:uid:<messageId>` | 24 hours | Deduplication of already-processed messages |
+| `gmail:historyId` | Persistent | Last processed Gmail `historyId` |
 
 ---
 
-## 📁 Struttura del progetto
+## 📁 Project structure
 
 ```
 netflix-confirm/
-├── index.js          # Codice principale (unico file)
-├── package.json      # Dipendenze e scripts npm
-├── package-lock.json # Lockfile dipendenze
-├── Dockerfile        # Immagine Docker (Node 20 + Chromium)
-├── railway.toml      # Configurazione deploy Railway
-├── .gitignore        # File ignorati da git
-└── README.md         # Questa documentazione
+├── index.js          # Main code (single file)
+├── package.json      # Dependencies and npm scripts
+├── package-lock.json # Dependency lockfile
+├── Dockerfile        # Docker image (Node 20 + Chromium)
+├── railway.toml      # Railway deploy configuration
+├── .gitignore        # Files ignored by git
+└── README.md         # This documentation
 ```
 
 ---
 
-## 🛠️ Stack tecnologico
+## 🛠️ Tech stack
 
-| Tecnologia | Versione | Utilizzo |
+| Technology | Version | Usage |
 |---|---|---|
 | [Node.js](https://nodejs.org/) | ≥ 18 | Runtime |
-| [Express](https://expressjs.com/) | ^4.19 | Server HTTP / webhook |
+| [Express](https://expressjs.com/) | ^4.19 | HTTP server / webhook |
 | [googleapis](https://github.com/googleapis/google-api-nodejs-client) | ^140 | Gmail API & OAuth2 |
 | [Playwright](https://playwright.dev/) | ^1.44 | Browser automation (Chromium) |
-| [redis](https://github.com/redis/node-redis) | ^4.6 | Cache / deduplicazione |
-| [dotenv](https://github.com/motdotla/dotenv) | ^16.4 | Gestione variabili d'ambiente |
+| [redis](https://github.com/redis/node-redis) | ^4.6 | Cache / deduplication |
+| [dotenv](https://github.com/motdotla/dotenv) | ^16.4 | Environment variable management |
 
 ---
 
 ## 🐛 Troubleshooting
 
-**Il bot non riceve le notifiche Gmail**
-- Verifica che il watch Gmail sia registrato correttamente (controlla i log `Gmail watch registrato`)
-- Assicurati che l'account di servizio `gmail-api-push@system.gserviceaccount.com` abbia il permesso `pubsub.publisher` sul topic
+**The bot is not receiving Gmail notifications**
+- Verify that the Gmail watch is registered correctly (check the logs for `Gmail watch registrato`)
+- Make sure the service account `gmail-api-push@system.gserviceaccount.com` has the `pubsub.publisher` permission on the topic
 
-**Playwright non trova il bottone**
-- Controlla i log per vedere il titolo della pagina caricata
-- Netflix potrebbe aver modificato il layout. Aggiorna `BUTTON_KEYWORDS` in `index.js`
+**Playwright cannot find the button**
+- Check the logs to see the title of the loaded page
+- Netflix may have changed the layout. Update `BUTTON_KEYWORDS` in `index.js`
 
-**Errore di connessione Redis**
-- Verifica che `REDIS_URL` sia corretto e che il servizio Redis sia raggiungibile
+**Redis connection error**
+- Verify that `REDIS_URL` is correct and that the Redis service is reachable
 
 **`FATAL: Variabile d'ambiente mancante`**
-- Controlla che tutte le variabili obbligatorie siano presenti nel file `.env` o nell'ambiente di esecuzione
+- Make sure all required variables are present in the `.env` file or in the execution environment
 
 ---
 
-## 📄 Licenza
+## 📄 License
 
-Uso personale. Questo progetto è destinato esclusivamente all'automazione del proprio account Netflix personale.
+Personal use. This project is intended exclusively for automating your own personal Netflix account.
